@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MCQ Studio | Free Firebase School Portal</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f3f6fc;--card:#fff;--ink:#17223b;--muted:#65718a;--line:#e2e8f0;--a:#4338ca;--b:#087eaa;--ok:#16834a;--bad:#b42318;--gold:#a65b05}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+header{background:linear-gradient(115deg,#29256f,#087eaa);color:white;padding:20px}header h1{margin:0;font-size:1.5rem}header p{margin:3px 0 0;opacity:.9}
+.wrap{max-width:1180px;margin:auto;padding:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:18px;margin:0 0 15px;box-shadow:0 5px 20px #18223a0a}
+h2{font-size:1.08rem;margin:0 0 5px}.sub,.muted{color:var(--muted)}.sub{font-size:.86rem;margin:0 0 14px}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1 1 190px;min-width:0}
+label{display:block;font-size:.76rem;font-weight:750;color:var(--muted);margin:0 0 5px;text-transform:uppercase;letter-spacing:.04em}
+input,select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;background:white;color:var(--ink)}
+button{font:inherit}.btn{border:1px solid var(--a);background:var(--a);color:white;border-radius:9px;padding:9px 14px;font-weight:650;cursor:pointer}.btn.alt{background:white;color:var(--ink);border-color:var(--line)}.btn.red{background:white;color:var(--bad);border-color:#fecaca}.btn:disabled{opacity:.45;cursor:not-allowed}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 15px}.tab{padding:8px 13px;border:1px solid var(--line);background:#fff;border-radius:30px;cursor:pointer;font-weight:650;color:var(--muted)}.tab.active{background:var(--a);color:white;border-color:var(--a)}
+.view{display:none}.view.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}.stat{padding:13px;border:1px solid var(--line);border-radius:12px;background:#fff}.stat strong{display:block;font-size:1.55rem}.stat span{font-size:.73rem;color:var(--muted);font-weight:700;text-transform:uppercase}
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;background:#eef2ff;color:#4338ca;font-size:.75rem;font-weight:700}.badge.ok{background:#dcfce7;color:#166534}.badge.gold{background:#ffedd5;color:#9a3412}
+table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:.7rem;color:var(--muted);text-transform:uppercase}.tablebox{overflow:auto;max-height:430px;border:1px solid var(--line);border-radius:10px}
+.hidden{display:none!important}.notice{padding:11px 13px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:.85rem;margin:10px 0}.warning{background:#fff7ed;color:#9a3412}.error{color:var(--bad)}.success{color:var(--ok)}.small{font-size:.82rem}
+.qoption{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);padding:13px;border-radius:10px;margin:8px 0;cursor:pointer}.qoption.selected{border:2px solid var(--a);background:#eef2ff}.qhead{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.progress{height:7px;background:#e8ebf3;border-radius:9px;margin:14px 0;overflow:hidden}.progress div{height:100%;background:linear-gradient(90deg,var(--a),var(--b))}
+#toast{position:fixed;bottom:15px;right:15px;background:#111827;color:white;padding:12px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s;z-index:10;max-width:90vw}#toast.show{opacity:1}
+@media(max-width:600px){.wrap{padding:10px}.card{padding:14px}.tabs{gap:5px}.tab{font-size:.79rem;padding:7px 10px}}
+</style>
+</head>
+<body>
+<header><div class="wrap" style="padding:0"><h1>📚 MCQ Studio</h1><p>Stage-wise · Grade-wise · Student Assessment & Points Portal</p></div></header>
+<div class="wrap">
+<section id="loginPanel" class="card" style="max-width:520px;margin:28px auto">
+<h2>Sign in to MCQ Studio</h2><p class="sub">Use the account provided by your school administrator.</p>
+<label>Email / Login ID</label><input id="loginEmail" type="email" autocomplete="username" placeholder="name@example.com">
+<div style="height:10px"></div><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password">
+<p id="loginError" class="error small"></p><button class="btn" id="loginBtn">Sign in</button>
+<div class="notice">Administrator setup is completed once in Firebase Authentication and Firestore. Follow the included README.</div>
+</section>
+<section id="appPanel" class="hidden">
+<div class="card"><div class="row" style="align-items:center"><div><h2 id="welcome">Welcome</h2><div id="userMeta" class="muted small"></div></div><div style="text-align:right"><span id="roleBadge" class="badge"></span> <button class="btn alt" id="logoutBtn">Sign out</button></div></div></div>
+<nav class="tabs" id="tabs"></nav>
+<div id="adminViews" class="hidden">
+<section class="view active" id="v-dashboard"><div class="grid" id="adminStats"></div><div class="card" style="margin-top:14px"><h2>Administrator overview</h2><p class="sub">Manage learners, import questions and review performance.</p><div class="notice warning">Free-plan scoring notice: quiz grading happens in the browser. It works without Cloud Functions, but a technically skilled student could manipulate a submitted score. Do not use these points as high-stakes or official examination marks.</div></div></section>
+<section class="view" id="v-students"><div class="card"><h2>Student management</h2><p class="sub">Create a Firebase email/password login and assign the learner to one stage and grade.</p>
+<div class="row"><div><label>Student full name</label><input id="stName"></div><div><label>Admission / Roll number</label><input id="stRoll"></div></div>
+<div class="row" style="margin-top:9px"><div><label>Student email / login ID</label><input id="stEmail" type="email"></div><div><label>Temporary password (min 6)</label><input id="stPass" type="text"></div></div>
+<div class="row" style="margin-top:9px"><div><label>Stage</label><select id="stStage"></select></div><div><label>Grade</label><select id="stGrade"></select></div></div>
+<p style="margin:12px 0"><button class="btn" id="createStudentBtn">Create student account</button></p>
+<div class="tablebox"><table><thead><tr><th>Name</th><th>Roll</th><th>Email</th><th>Stage / Grade</th><th>Points*</th><th>Status</th></tr></thead><tbody id="studentsBody"></tbody></table></div><p class="muted small">*Points are calculated from recorded quiz submissions.</p>
+</div></section>
+<section class="view" id="v-import"><div class="card"><h2>Import MCQ question bank</h2><p class="sub">Upload XLSX, XLS or CSV. Required columns: Question, Option A-D, Correct Answer. Stage, Grade and Domain/Subject can be included or selected here.</p>
+<div class="row"><div><label>Stage</label><select id="impStage"></select></div><div><label>Grade</label><select id="impGrade"></select></div></div>
+<div style="margin:12px 0"><input type="file" id="excelFile" accept=".xlsx,.xls,.csv"></div>
+<div class="row"><button class="btn alt" id="templateBtn">Download Excel template</button><button class="btn" id="importBtn">Import to cloud bank</button></div><p id="importReport" class="small"></p></div>
+<div class="card"><h2>Question bank inventory</h2><div class="tablebox"><table><thead><tr><th>Stage</th><th>Grade</th><th>Domain</th><th>Question</th></tr></thead><tbody id="questionsBody"></tbody></table></div></div></section>
+<section class="view" id="v-reports"><div class="card"><h2>Student assessment reports</h2><div class="tablebox"><table><thead><tr><th>Student</th><th>Stage / Grade</th><th>Subject</th><th>Score</th><th>Points</th><th>Date</th></tr></thead><tbody id="reportsBody"></tbody></table></div></div></section>
+<section class="view" id="v-settings"><div class="card"><h2>Points and achievement settings</h2><p class="sub">Current browser-side scoring policy:</p><table><tbody><tr><td>Correct answer</td><td>+10 points</td></tr><tr><td>Quiz completion</td><td>+5 points</td></tr><tr><td>Accuracy 80% or above</td><td>+10 points</td></tr><tr><td>Perfect score</td><td>+20 points</td></tr></tbody></table><p class="muted small">Achievement levels: Beginner 0–99 · Learner 100–249 · Achiever 250–499 · Champion 500–999 · Master Learner 1000+.</p></div></section>
+</div>
+<div id="studentViews" class="hidden">
+<section class="view active" id="v-home"><div class="grid" id="studentStats"></div><div class="card" style="margin-top:14px"><h2>Your learning dashboard</h2><p class="sub" id="studentIntro"></p><div id="achievement"></div></div>
+<div class="card"><h2>Available quizzes</h2><div class="row"><div><label>Domain / Subject</label><select id="studentSubject"></select></div><div><label>Number of questions</label><input type="number" id="studentCount" min="1" max="50" value="10"></div></div><p style="margin-top:12px"><button class="btn" id="beginStudentQuiz">Start quiz</button></p><p id="studentPoolInfo" class="muted small"></p></div>
+<div class="card"><h2>My recent results</h2><div class="tablebox"><table><thead><tr><th>Date</th><th>Domain</th><th>Score</th><th>Points gained</th></tr></thead><tbody id="myResults"></tbody></table></div></div></section>
+<section class="view" id="v-quiz"><div id="quizArea" class="card"><p class="muted">Select a quiz from your dashboard to begin.</p></div></section>
+<section class="view" id="v-leaderboard"><div class="card"><h2>Grade leaderboard</h2><p class="sub">Learners in your assigned stage and grade, ranked by points.</p><div class="tablebox"><table><thead><tr><th>Rank</th><th>Student</th><th>Points</th><th>Achievement</th></tr></thead><tbody id="leaderboardBody"></tbody></table></div></div></section>
+</div></section></section>
+</div><div id="toast"></div>
+<script>
+/* Firebase project configuration supplied by the school administrator. */
+const firebaseConfig={
+ apiKey:"AIzaSyBdpV4fexFa3HkfTm1LO3H1dyCopQqIlRE",
+ authDomain:"flutter-ai-playground-253f2.firebaseapp.com",
+ projectId:"flutter-ai-playground-253f2",
+ storageBucket:"flutter-ai-playground-253f2.firebasestorage.app",
+ messagingSenderId:"1005402947104",
+ appId:"1:1005402947104:web:8038d2162b097e3c6c8645"
+};
+const STAGES={
+ foundational:{label:"Foundational Stage",grades:["Pre-Primary 3","Pre-Primary 2","Balvatika","Grade 1","Grade 2"],subjects:["Physical Development","Socio-Emotional and Ethical Development","Cognitive Development","Language and Literacy Development","Aesthetic and Cultural Development","Positive Learning Habits"]},
+ preparatory:{label:"Preparatory Stage",grades:["Grade 3","Grade 4","Grade 5"],subjects:["Language Education (R1)","Language Education (R2)","Mathematics","The World Around Us","Art Education (AE)","Physical Education and Well-being","Other Learning Activities (Participation in Cultural, Sports, Reading and other activities)"]},
+ middle:{label:"Middle Stage",grades:["Grade 6","Grade 7","Grade 8"],subjects:["Language 1 (R1)","Language 2 (R2)","Language 3 (R3)","Mathematics","Science","Social Science","Art Education","Physical Education & Well Being","Skill Education","Other Learning Activities (Participation in Cultural, Sports, Reading and other activities)","Bagless Days for Vocational Experience"]}
+};
+const $=id=>document.getElementById(id), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let auth,db,currentUser=null,profile=null,activeQuiz=null;
+function toast(m){$("toast").textContent=m;$("toast").classList.add("show");setTimeout(()=>$("toast").classList.remove("show"),3200)}
+function stageOptions(id){$(id).innerHTML=Object.entries(STAGES).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("")}
+function gradeOptions(sid,gid){let s=$(sid).value;$(gid).innerHTML=(STAGES[s]?.grades||[]).map(g=>`<option>${g}</option>`).join("")}
+function subjectsFor(s){return STAGES[s]?.subjects||[]}
+function achievement(p){return p>=1000?"Master Learner":p>=500?"Champion":p>=250?"Achiever":p>=100?"Learner":"Beginner"}
+function friendly(e){return e.code==="auth/invalid-credential"||e.code==="auth/wrong-password"?"Incorrect email or password.":e.code==="auth/user-not-found"?"Account not found.":e.code==="permission-denied"?"Firestore denied this action. Check that the current firestore.rules file is published.":e.message||"Something went wrong."}
+function init(){
+ firebase.initializeApp(firebaseConfig);auth=firebase.auth();db=firebase.firestore();
+ stageOptions("stStage");stageOptions("impStage");gradeOptions("stStage","stGrade");gradeOptions("impStage","impGrade");
+ $("stStage").onchange=()=>gradeOptions("stStage","stGrade");$("impStage").onchange=()=>gradeOptions("impStage","impGrade");
+ auth.onAuthStateChanged(async u=>{if(!u){currentUser=null;profile=null;$("loginPanel").classList.remove("hidden");$("appPanel").classList.add("hidden");return}
+  try{currentUser=u;let s=await db.collection("users").doc(u.uid).get();if(!s.exists)throw Error("Your account profile is missing. Ask the administrator to complete setup.");profile=s.data();if(profile.active===false||!["admin","student"].includes(profile.role))throw Error("This account is inactive or not authorised.");showApp()}catch(e){$("loginError").textContent=friendly(e);await auth.signOut()}
+ });
+}
+function showApp(){
+ $("loginPanel").classList.add("hidden");$("appPanel").classList.remove("hidden");$("welcome").textContent="Welcome, "+(profile.name||currentUser.email);
+ $("userMeta").textContent=profile.role==="admin"?"School administrator":`${STAGES[profile.stage]?.label||profile.stage} · ${profile.grade} · Roll: ${profile.roll||"—"}`;
+ $("roleBadge").textContent=profile.role.toUpperCase();
+ if(profile.role==="admin"){$("adminViews").classList.remove("hidden");$("studentViews").classList.add("hidden");makeTabs("admin",["Dashboard","Students","Import","Reports","Settings"]);loadAdmin()}
+ else{$("studentViews").classList.remove("hidden");$("adminViews").classList.add("hidden");makeTabs("student",["Home","Quiz","Leaderboard"]);loadStudentHome()}
+}
+function makeTabs(kind,names){let host=$("tabs");host.innerHTML=names.map((n,i)=>`<button class="tab ${i===0?"active":""}" data-view="v-${n.toLowerCase()}">${n}</button>`).join("");
+ host.querySelectorAll("button").forEach(b=>b.onclick=()=>{host.querySelectorAll("button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("#"+(kind==="admin"?"adminViews":"studentViews")+" .view").forEach(v=>v.classList.toggle("active",v.id===b.dataset.view));if(b.dataset.view==="v-leaderboard")loadLeaderboard();if(b.dataset.view==="v-reports")loadReports()})}
+$("loginBtn").onclick=async()=>{ $("loginError").textContent="";try{await auth.signInWithEmailAndPassword($("loginEmail").value.trim(),$("loginPassword").value)}catch(e){$("loginError").textContent=friendly(e)}};
+$("logoutBtn").onclick=()=>auth.signOut();
+async function loadAdmin(){try{let [u,q,r]=await Promise.all([db.collection("users").where("role","==","student").get(),db.collection("questions").get(),db.collection("results").get()]);
+ $("adminStats").innerHTML=[["Students",u.size],["Questions",q.size],["Quiz attempts",r.size],["Points recorded",r.docs.reduce((a,d)=>a+(Number(d.data().pointsAwarded)||0),0)]].map(x=>`<div class="stat"><strong>${x[1]}</strong><span>${x[0]}</span></div>`).join("");await loadStudents();await loadQuestions()
+ }catch(e){toast(friendly(e))}}
+async function pointsFor(uid){let s=await db.collection("results").where("studentId","==",uid).get();return s.docs.reduce((a,d)=>a+(Number(d.data().pointsAwarded)||0),0)}
+async function loadStudents(){try{let s=await db.collection("users").where("role","==","student").get();let rows=await Promise.all(s.docs.map(async d=>({id:d.id,...d.data(),totalPoints:await pointsFor(d.id)})));
+ rows.sort((a,b)=>(a.name||"").localeCompare(b.name||""));$("studentsBody").innerHTML=rows.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.roll||"—")}</td><td>${esc(x.email)}</td><td>${esc(STAGES[x.stage]?.label||x.stage)} · ${esc(x.grade)}</td><td><b>${x.totalPoints}</b></td><td>${x.active===false?"Inactive":"Active"}</td></tr>`).join("")||'<tr><td colspan="6">No students added.</td></tr>'
+ }catch(e){toast(friendly(e))}}
+async function loadQuestions(){try{let s=await db.collection("questions").limit(500).get();$("questionsBody").innerHTML=s.docs.map(d=>{let q=d.data();return `<tr><td>${esc(STAGES[q.stage]?.label||q.stage)}</td><td>${esc(q.grade)}</td><td>${esc(q.subject)}</td><td>${esc(q.question)}</td></tr>`}).join("")||'<tr><td colspan="4">No questions uploaded.</td></tr>'}catch(e){toast(friendly(e))}}
+$("createStudentBtn").onclick=async()=>{let secondary=null;try{
+ if(profile?.role!=="admin")throw Error("Administrator access required.");
+ let name=$("stName").value.trim(),email=$("stEmail").value.trim(),password=$("stPass").value,roll=$("stRoll").value.trim(),stage=$("stStage").value,grade=$("stGrade").value;
+ if(!name||!email||password.length<6)throw Error("Enter name, email and a password of at least 6 characters.");
+ if(!STAGES[stage].grades.includes(grade))throw Error("Choose a valid grade for the selected stage.");
+ secondary=firebase.initializeApp(firebaseConfig,"studentCreator_"+Date.now());let cred=await secondary.auth().createUserWithEmailAndPassword(email,password);
+ await db.collection("users").doc(cred.user.uid).set({name,email,roll,stage,grade,role:"student",active:true,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:currentUser.uid});
+ ["stName","stEmail","stPass","stRoll"].forEach(id=>$(id).value="");toast("Student account created.");await loadAdmin()
+ }catch(e){toast(friendly(e))}finally{if(secondary)await secondary.delete().catch(()=>{})}};
+const aliases={stage:["stage","level"],grade:["grade","class"],subject:["subject","domain","domainorsubject","learningarea"],question:["question","questiontext","stem"],a:["optiona","opta","option1","choicea","a"],b:["optionb","optb","option2","choiceb","b"],c:["optionc","optc","option3","choicec","c"],d:["optiond","optd","option4","choiced","d"],answer:["correctanswer","answer","correctoption","ans","key"],explanation:["explanation","rationale","reason"],difficulty:["difficulty","complexity"]};
+const norm=s=>String(s??"").toLowerCase().replace(/[^a-z0-9]/g,"");
+function getcol(row,key){for(let a of aliases[key]){let k=Object.keys(row).find(x=>norm(x)===a);if(k&&String(row[k]).trim())return String(row[k]).trim()}return ""}
+function matchStage(s){let n=norm(s);return n.startsWith("found")||n==="f"?"foundational":n.startsWith("prep")||n==="p"?"preparatory":n.startsWith("mid")||n==="m"?"middle":null}
+function matchSubject(stage,s){let n=norm(s);return subjectsFor(stage).find(x=>norm(x)===n)||subjectsFor(stage).find(x=>norm(x).includes(n)||n.includes(norm(x)))||null}
+function answerIndex(a,opts){let n=norm(a),m=n.match(/^(?:option|opt|choice)?([a-d])$/);if(m)return m[1].charCodeAt(0)-97;if(/^[1-4]$/.test(n))return +n-1;return opts.findIndex(x=>norm(x)===n)}
+$("templateBtn").onclick=()=>{let h=["Stage","Grade","Domain/Subject","Question","Option A","Option B","Option C","Option D","Correct Answer","Explanation","Difficulty"];let wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([h,["Preparatory","Grade 3","Mathematics","What is 2 + 3?","4","5","6","7","B","","Easy"]]),"MCQs");XLSX.writeFile(wb,"MCQ_Studio_Free_Plan_Template.xlsx")};
+$("importBtn").onclick=async()=>{let f=$("excelFile").files[0];if(!f){toast("Choose an Excel or CSV file first.");return}
+ try{let wb=XLSX.read(await f.arrayBuffer(),{type:"array"}),stage=$("impStage").value,grade=$("impGrade").value,batch=db.batch(),count=0,errors=0;
+ for(let sn of wb.SheetNames){for(let row of XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:""})){let question=getcol(row,"question");if(!question)continue;let st=matchStage(getcol(row,"stage"))||stage,gr=getcol(row,"grade")||grade,subject=matchSubject(st,getcol(row,"subject")),opts=["a","b","c","d"].map(k=>getcol(row,k)).filter(Boolean),ai=answerIndex(getcol(row,"answer"),opts);
+ if(!subject||opts.length<2||ai<0||!STAGES[st]?.grades.includes(gr)){errors++;continue}
+ let ref=db.collection("questions").doc();batch.set(ref,{stage:st,grade:gr,subject,question,options:opts,correctIndex:ai,explanation:getcol(row,"explanation"),difficulty:getcol(row,"difficulty"),createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:currentUser.uid});count++;
+ if(count%400===0){await batch.commit();batch=db.batch()}
+ }}
+ if(count%400!==0)await batch.commit();$("importReport").textContent=`Imported ${count} questions. Skipped ${errors} invalid rows.`;toast(`Imported ${count} questions.`);await loadQuestions();await loadAdmin()
+ }catch(e){$("importReport").textContent=friendly(e);toast(friendly(e))}};
+async function loadStudentHome(){try{let p=profile,rs=await db.collection("results").where("studentId","==",currentUser.uid).get(),pts=rs.docs.reduce((a,d)=>a+(Number(d.data().pointsAwarded)||0),0);
+ $("studentStats").innerHTML=[["Total points",pts],["Quizzes attempted",rs.size],["Achievement",achievement(pts)]].map(x=>`<div class="stat"><strong>${x[1]}</strong><span>${x[0]}</span></div>`).join("");
+ $("studentIntro").textContent=`${STAGES[p.stage]?.label||p.stage} · ${p.grade} · Keep learning and collecting points!`;
+ let next=({Beginner:100,Learner:250,Achiever:500,Champion:1000,"Master Learner":1000}[achievement(pts)]||1000);$("achievement").innerHTML=`<span class="badge gold">${achievement(pts)}</span> <span class="muted small">${pts>=1000?"Top achievement reached":(next-pts)+" points to next level"}.</span>`;
+ $("studentSubject").innerHTML=subjectsFor(p.stage).map(s=>`<option>${esc(s)}</option>`).join("");await loadMyResults();await updateStudentPool()
+ }catch(e){toast(friendly(e))}}
+$("studentSubject").onchange=updateStudentPool;
+async function updateStudentPool(){if(!profile)return;try{let s=await db.collection("questions").where("stage","==",profile.stage).where("grade","==",profile.grade).where("subject","==",$("studentSubject").value).get();$("studentPoolInfo").textContent=`${s.size} questions available for ${profile.grade}.`;$("beginStudentQuiz").disabled=!s.size}catch(e){$("studentPoolInfo").textContent=friendly(e)}}
+$("beginStudentQuiz").onclick=async()=>{try{let s=await db.collection("questions").where("stage","==",profile.stage).where("grade","==",profile.grade).where("subject","==",$("studentSubject").value).get();let qs=s.docs.map(d=>({id:d.id,...d.data()}));if(!qs.length)throw Error("No questions available for this subject.");qs.sort(()=>Math.random()-.5);let n=Math.max(1,Math.min(50,+$("studentCount").value||10));activeQuiz={items:qs.slice(0,n),answers:[],idx:0,started:Date.now(),subject:$("studentSubject").value};showStudentTab("v-quiz");renderStudentQuestion()}catch(e){toast(friendly(e))}};
+function showStudentTab(id){document.querySelectorAll("#studentViews .view").forEach(v=>v.classList.toggle("active",v.id===id));document.querySelectorAll("#tabs .tab").forEach(b=>b.classList.toggle("active",b.dataset.view===id))}
+function renderStudentQuestion(){let q=activeQuiz.items[activeQuiz.idx],sel=activeQuiz.answers[activeQuiz.idx];$("quizArea").innerHTML=`<div class="qhead"><span class="badge">${esc(profile.grade)}</span><span class="muted">Question ${activeQuiz.idx+1} of ${activeQuiz.items.length}</span></div><div class="progress"><div style="width:${activeQuiz.idx/activeQuiz.items.length*100}%"></div></div><h3>${esc(q.question)}</h3>${q.options.map((o,i)=>`<button class="qoption ${sel===i?"selected":""}" data-i="${i}">${"ABCD"[i]}. ${esc(o)}</button>`).join("")}<div class="row" style="margin-top:14px"><button class="btn alt" id="qPrev" ${activeQuiz.idx===0?"disabled":""}>Previous</button><button class="btn" id="qNext" ${sel==null?"disabled":""}>${activeQuiz.idx===activeQuiz.items.length-1?"Submit quiz":"Next"}</button></div>`;
+ document.querySelectorAll(".qoption").forEach(b=>b.onclick=()=>{activeQuiz.answers[activeQuiz.idx]=+b.dataset.i;renderStudentQuestion()});$("qPrev").onclick=()=>{activeQuiz.idx--;renderStudentQuestion()};$("qNext").onclick=()=>{if(activeQuiz.idx===activeQuiz.items.length-1)submitStudentQuiz();else{activeQuiz.idx++;renderStudentQuestion()}}}
+async function submitStudentQuiz(){try{let total=activeQuiz.items.length,correct=activeQuiz.items.reduce((a,q,i)=>a+(q.correctIndex===activeQuiz.answers[i]?1:0),0),percentage=Math.round(correct/total*100),points=correct*10+5+(percentage>=80?10:0)+(correct===total?20:0);
+ let result={studentId:currentUser.uid,studentName:profile.name||currentUser.email,stage:profile.stage,grade:profile.grade,subject:activeQuiz.subject,questionIds:activeQuiz.items.map(q=>q.id),answers:activeQuiz.answers,correct,total,percentage,pointsAwarded:points,elapsedSeconds:Math.round((Date.now()-activeQuiz.started)/1000),createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+ await db.collection("results").add(result);activeQuiz=null;await loadStudentHome();$("quizArea").innerHTML=`<h2>Quiz completed!</h2><div class="grid" style="margin:14px 0"><div class="stat"><strong>${correct}/${total}</strong><span>Correct answers</span></div><div class="stat"><strong>${percentage}%</strong><span>Accuracy</span></div><div class="stat"><strong>+${points}</strong><span>Points gained</span></div></div><p><span class="badge gold">${achievement((await db.collection("results").where("studentId","==",currentUser.uid).get()).docs.reduce((a,d)=>a+(d.data().pointsAwarded||0),0))}</span></p><button class="btn" id="backHome">Back to dashboard</button>`;$("backHome").onclick=()=>{loadStudentHome();showStudentTab("v-home")};toast("Quiz result saved.")}catch(e){toast(friendly(e))}}
+async function loadMyResults(){let s=await db.collection("results").where("studentId","==",currentUser.uid).limit(30).get();let docs=s.docs.sort((a,b)=>(b.data().createdAt?.toMillis?.()||0)-(a.data().createdAt?.toMillis?.()||0));$("myResults").innerHTML=docs.map(d=>{let r=d.data();return `<tr><td>${r.createdAt?.toDate?.().toLocaleDateString?.()||"Just now"}</td><td>${esc(r.subject)}</td><td>${r.correct}/${r.total} (${r.percentage}%)</td><td><b>+${r.pointsAwarded}</b></td></tr>`}).join("")||'<tr><td colspan="4">No quiz attempts yet.</td></tr>'}
+async function loadLeaderboard(){try{let s=await db.collection("users").where("role","==","student").where("stage","==",profile.stage).where("grade","==",profile.grade).get();let arr=await Promise.all(s.docs.map(async d=>({id:d.id,...d.data(),points:await pointsFor(d.id)})));arr.sort((a,b)=>b.points-a.points);$("leaderboardBody").innerHTML=arr.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td><b>${x.points}</b></td><td>${achievement(x.points)}</td></tr>`).join("")||'<tr><td colspan="4">No students in this grade yet.</td></tr>'}catch(e){toast(friendly(e))}}
+async function loadReports(){try{let s=await db.collection("results").orderBy("createdAt","desc").limit(300).get();$("reportsBody").innerHTML=s.docs.map(d=>{let r=d.data();return `<tr><td>${esc(r.studentName)}</td><td>${esc(STAGES[r.stage]?.label)} · ${esc(r.grade)}</td><td>${esc(r.subject)}</td><td>${r.correct}/${r.total} (${r.percentage}%)</td><td><b>${r.pointsAwarded}</b></td><td>${r.createdAt?.toDate?.().toLocaleString?.()||""}</td></tr>`}).join("")||'<tr><td colspan="6">No results yet.</td></tr>'}catch(e){toast(friendly(e))}}
+try{init()}catch(e){$("loginError").textContent=e.message}
+</script>
+</body></html>
