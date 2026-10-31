@@ -25,6 +25,9 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{text-align:left
 .hidden{display:none!important}.notice{padding:11px 13px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:.85rem;margin:10px 0}.warning{background:#fff7ed;color:#9a3412}.error{color:var(--bad)}.success{color:var(--ok)}.small{font-size:.82rem}
 .qoption{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);padding:13px;border-radius:10px;margin:8px 0;cursor:pointer}.qoption.selected{border:2px solid var(--a);background:#eef2ff}.qhead{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.progress{height:7px;background:#e8ebf3;border-radius:9px;margin:14px 0;overflow:hidden}.progress div{height:100%;background:linear-gradient(90deg,var(--a),var(--b))}
 #toast{position:fixed;bottom:15px;right:15px;background:#111827;color:white;padding:12px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s;z-index:10;max-width:90vw}#toast.show{opacity:1}
+.diag{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:.82rem;word-break:break-all}
+.diag code{background:#eef2ff;padding:1px 5px;border-radius:4px;font-size:.8rem}
+.diag ul{margin:8px 0 0;padding-left:20px}.diag li{margin:4px 0}
 @media(max-width:600px){.wrap{padding:10px}.card{padding:14px}.tabs{gap:5px}.tab{font-size:.79rem;padding:7px 10px}}
 </style>
 </head>
@@ -38,6 +41,19 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{text-align:left
 <p id="loginError" class="error small"></p><button class="btn" id="loginBtn">Sign in</button>
 <div class="notice">Administrator setup is completed once in Firebase Authentication and Firestore. Follow the included README.</div>
 </section>
+
+<!-- NEW: profile error panel — shown when sign-in succeeds but the Firestore profile can't be loaded -->
+<section id="profileErrorPanel" class="card hidden" style="max-width:640px;margin:28px auto">
+<h2>Can't load your profile</h2>
+<p class="sub">Your sign-in worked, but the portal couldn't find or read your profile in Firestore.</p>
+<div id="profileErrorBody"></div>
+<div class="row" style="margin-top:12px">
+<button class="btn" id="retryProfileBtn">Retry</button>
+<button class="btn alt" id="copyDiagBtn">Copy diagnostic</button>
+<button class="btn red" id="signOutFromErrorBtn">Sign out</button>
+</div>
+</section>
+
 <section id="appPanel" class="hidden">
 <div class="card"><div class="row" style="align-items:center"><div><h2 id="welcome">Welcome</h2><div id="userMeta" class="muted small"></div></div><div style="text-align:right"><span id="roleBadge" class="badge"></span> <button class="btn alt" id="logoutBtn">Sign out</button></div></div></div>
 <nav class="tabs" id="tabs"></nav>
@@ -82,32 +98,157 @@ const STAGES={
  middle:{label:"Middle Stage",grades:["Grade 6","Grade 7","Grade 8"],subjects:["Language 1 (R1)","Language 2 (R2)","Language 3 (R3)","Mathematics","Science","Social Science","Art Education","Physical Education & Well Being","Skill Education","Other Learning Activities (Participation in Cultural, Sports, Reading and other activities)","Bagless Days for Vocational Experience"]}
 };
 const $=id=>document.getElementById(id), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let auth,db,currentUser=null,profile=null,activeQuiz=null;
+let auth,db,currentUser=null,profile=null,activeQuiz=null,lastDiag=null;
+
 function toast(m){$("toast").textContent=m;$("toast").classList.add("show");setTimeout(()=>$("toast").classList.remove("show"),3200)}
 function stageOptions(id){$(id).innerHTML=Object.entries(STAGES).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("")}
 function gradeOptions(sid,gid){let s=$(sid).value;$(gid).innerHTML=(STAGES[s]?.grades||[]).map(g=>`<option>${g}</option>`).join("")}
 function subjectsFor(s){return STAGES[s]?.subjects||[]}
 function achievement(p){return p>=1000?"Master Learner":p>=500?"Champion":p>=250?"Achiever":p>=100?"Learner":"Beginner"}
-function friendly(e){return e.code==="auth/invalid-credential"||e.code==="auth/wrong-password"?"Incorrect email or password.":e.code==="auth/user-not-found"?"Account not found.":e.code==="permission-denied"?"Firestore denied this action. Check that the current firestore.rules file is published.":e.message||"Something went wrong."}
+function friendly(e){
+  const c=(e&&e.code)||"";
+  return c==="auth/invalid-credential"||c==="auth/wrong-password"?"Incorrect email or password."
+   :c==="auth/user-not-found"?"Account not found."
+   :c==="auth/too-many-requests"?"Too many attempts. Try again later."
+   :c==="auth/invalid-email"?"Invalid email address."
+   :c==="permission-denied"?"Firestore denied this action. Check that your firestore.rules are published."
+   :c==="failed-precondition"?"A Firestore index is missing. Open the browser console for a link to create it."
+   :c==="unavailable"?"Network error. Check your connection and try again."
+   :c==="not-found"?"The document could not be found."
+   :(e&&e.message)||"Something went wrong.";
+}
+
 function init(){
  firebase.initializeApp(firebaseConfig);auth=firebase.auth();db=firebase.firestore();
  stageOptions("stStage");stageOptions("impStage");gradeOptions("stStage","stGrade");gradeOptions("impStage","impGrade");
  $("stStage").onchange=()=>gradeOptions("stStage","stGrade");$("impStage").onchange=()=>gradeOptions("impStage","impGrade");
- auth.onAuthStateChanged(async u=>{if(!u){currentUser=null;profile=null;$("loginPanel").classList.remove("hidden");$("appPanel").classList.add("hidden");return}
-  try{currentUser=u;let s=await db.collection("users").doc(u.uid).get();if(!s.exists)throw Error("Your account profile is missing. Ask the administrator to complete setup.");profile=s.data();if(profile.active===false||!["admin","student"].includes(profile.role))throw Error("This account is inactive or not authorised.");showApp()}catch(e){$("loginError").textContent=friendly(e);await auth.signOut()}
+ auth.onAuthStateChanged(async u=>{
+   hideAllPanels();
+   if(!u){currentUser=null;profile=null;$("loginPanel").classList.remove("hidden");return}
+   currentUser=u;
+   await loadProfileAndRoute(u);
  });
 }
+
+function hideAllPanels(){
+  $("loginPanel").classList.add("hidden");
+  $("appPanel").classList.add("hidden");
+  $("profileErrorPanel").classList.add("hidden");
+}
+
+async function loadProfileAndRoute(u){
+  const diag={
+    email:u.email||"(no email)",
+    uid:u.uid,
+    path:"users/"+u.uid,
+    projectId:firebaseConfig.projectId,
+    errorCode:null,
+    errorMessage:null,
+    profileId:null,
+    profile:null
+  };
+  try{
+    const snap=await db.collection("users").doc(u.uid).get();
+    diag.profileId=snap.id;
+    if(!snap.exists){return showProfileError("not_found",diag)}
+    profile=snap.data();
+    diag.profile={
+      role:profile.role,active:profile.active,name:profile.name,email:profile.email,
+      stage:profile.stage,grade:profile.grade,roll:profile.roll
+    };
+    if(profile.active===false){return showProfileError("inactive",diag)}
+    if(!["admin","student"].includes(profile.role)){return showProfileError("bad_role",diag)}
+    if(profile.role==="student"&&(!profile.stage||!profile.grade)){return showProfileError("incomplete",diag)}
+    showApp();
+  }catch(e){
+    diag.errorCode=(e&&e.code)||null;
+    diag.errorMessage=(e&&e.message)||String(e);
+    if(e&&e.code==="permission-denied"){return showProfileError("permission_denied",diag)}
+    return showProfileError("unknown",diag);
+  }
+}
+
+function showProfileError(reason,diag){
+  lastDiag={reason,diag};
+  const causes={
+    not_found:[
+      "No Firestore document exists at <code>"+esc(diag.path)+"</code>.",
+      "Most likely: your profile was created under a <b>different UID</b> than your Auth UID. Open Firebase Console → Firestore → users, find the doc for <b>"+esc(diag.email)+"</b>, and compare its ID with your Auth UID below.",
+      "Or: this app is connected to a different Firebase project than the one where your profile was created. Confirm <code>projectId</code> below matches the console."
+    ],
+    inactive:[
+      "Your profile exists but has <code>active: false</code>.",
+      "Ask the administrator to set <code>active</code> to <code>true</code> on <code>"+esc(diag.path)+"</code>."
+    ],
+    bad_role:[
+      "Your profile exists but <code>role</code> is not <code>admin</code> or <code>student</code>.",
+      "Ask the administrator to set <code>role</code> to <code>admin</code> or <code>student</code>."
+    ],
+    incomplete:[
+      "Your student profile is missing <code>stage</code> or <code>grade</code>.",
+      "Ask the administrator to complete the document at <code>"+esc(diag.path)+"</code>."
+    ],
+    permission_denied:[
+      "Firestore denied the read of <code>"+esc(diag.path)+"</code>.",
+      "Publish your <code>firestore.rules</code>. The self-read rule must allow <code>request.auth.uid == uid</code> on <code>/users/{uid}</code>."
+    ],
+    unknown:[
+      "Unexpected error while loading your profile.",
+      "Error: <code>"+esc(diag.errorMessage||"unknown")+"</code>"
+    ]
+  };
+  const items=(causes[reason]||causes.unknown).map(x=>"<li>"+x+"</li>").join("");
+  $("profileErrorBody").innerHTML=
+    '<div class="diag"><b>Reason:</b> '+esc(reason.replace(/_/g," "))+
+    "<ul>"+items+"</ul>"+
+    "<p style=\"margin-top:10px\"><b>Diagnostic</b><br>"+
+    "Email: "+esc(diag.email)+"<br>"+
+    "Auth UID: <code>"+esc(diag.uid)+"</code><br>"+
+    "Looked up: <code>"+esc(diag.path)+"</code><br>"+
+    "Project ID: <code>"+esc(diag.projectId)+"</code>"+
+    (diag.profileId?"<br>Profile doc ID: <code>"+esc(diag.profileId)+"</code>":"")+
+    (diag.errorCode?"<br>Error code: <code>"+esc(diag.errorCode)+"</code>":"")+
+    "</p></div>";
+  $("profileErrorPanel").classList.remove("hidden");
+}
+
 function showApp(){
- $("loginPanel").classList.add("hidden");$("appPanel").classList.remove("hidden");$("welcome").textContent="Welcome, "+(profile.name||currentUser.email);
- $("userMeta").textContent=profile.role==="admin"?"School administrator":`${STAGES[profile.stage]?.label||profile.stage} · ${profile.grade} · Roll: ${profile.roll||"—"}`;
+ $("loginPanel").classList.add("hidden");
+ $("profileErrorPanel").classList.add("hidden");
+ $("appPanel").classList.remove("hidden");
+ $("welcome").textContent="Welcome, "+(profile.name||currentUser.email);
+ $("userMeta").textContent=profile.role==="admin"
+   ?"School administrator"
+   :`${STAGES[profile.stage]?.label||profile.stage} · ${profile.grade} · Roll: ${profile.roll||"—"}`;
  $("roleBadge").textContent=profile.role.toUpperCase();
  if(profile.role==="admin"){$("adminViews").classList.remove("hidden");$("studentViews").classList.add("hidden");makeTabs("admin",["Dashboard","Students","Import","Reports","Settings"]);loadAdmin()}
  else{$("studentViews").classList.remove("hidden");$("adminViews").classList.add("hidden");makeTabs("student",["Home","Quiz","Leaderboard"]);loadStudentHome()}
 }
+
 function makeTabs(kind,names){let host=$("tabs");host.innerHTML=names.map((n,i)=>`<button class="tab ${i===0?"active":""}" data-view="v-${n.toLowerCase()}">${n}</button>`).join("");
  host.querySelectorAll("button").forEach(b=>b.onclick=()=>{host.querySelectorAll("button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("#"+(kind==="admin"?"adminViews":"studentViews")+" .view").forEach(v=>v.classList.toggle("active",v.id===b.dataset.view));if(b.dataset.view==="v-leaderboard")loadLeaderboard();if(b.dataset.view==="v-reports")loadReports()})}
+
 $("loginBtn").onclick=async()=>{ $("loginError").textContent="";try{await auth.signInWithEmailAndPassword($("loginEmail").value.trim(),$("loginPassword").value)}catch(e){$("loginError").textContent=friendly(e)}};
 $("logoutBtn").onclick=()=>auth.signOut();
+$("retryProfileBtn").onclick=()=>{if(currentUser)loadProfileAndRoute(currentUser)};
+$("signOutFromErrorBtn").onclick=()=>auth.signOut();
+$("copyDiagBtn").onclick=async()=>{
+  if(!lastDiag){toast("No diagnostic yet.");return}
+  const d=lastDiag.diag;
+  const txt=[
+    "Reason: "+lastDiag.reason,
+    "Email: "+d.email,
+    "Auth UID: "+d.uid,
+    "Looked up path: "+d.path,
+    "Firebase projectId: "+d.projectId,
+    "Profile doc ID: "+(d.profileId||"n/a"),
+    "Error code: "+(d.errorCode||"none"),
+    "Error message: "+(d.errorMessage||"none"),
+    "Profile data: "+(d.profile?JSON.stringify(d.profile,null,2):"n/a")
+  ].join("\n");
+  try{await navigator.clipboard.writeText(txt);toast("Diagnostic copied to clipboard.")}catch{toast("Copy failed — select the text manually.")}
+};
+
 async function loadAdmin(){try{let [u,q,r]=await Promise.all([db.collection("users").where("role","==","student").get(),db.collection("questions").get(),db.collection("results").get()]);
  $("adminStats").innerHTML=[["Students",u.size],["Questions",q.size],["Quiz attempts",r.size],["Points recorded",r.docs.reduce((a,d)=>a+(Number(d.data().pointsAwarded)||0),0)]].map(x=>`<div class="stat"><strong>${x[1]}</strong><span>${x[0]}</span></div>`).join("");await loadStudents();await loadQuestions()
  }catch(e){toast(friendly(e))}}
@@ -116,6 +257,7 @@ async function loadStudents(){try{let s=await db.collection("users").where("role
  rows.sort((a,b)=>(a.name||"").localeCompare(b.name||""));$("studentsBody").innerHTML=rows.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.roll||"—")}</td><td>${esc(x.email)}</td><td>${esc(STAGES[x.stage]?.label||x.stage)} · ${esc(x.grade)}</td><td><b>${x.totalPoints}</b></td><td>${x.active===false?"Inactive":"Active"}</td></tr>`).join("")||'<tr><td colspan="6">No students added.</td></tr>'
  }catch(e){toast(friendly(e))}}
 async function loadQuestions(){try{let s=await db.collection("questions").limit(500).get();$("questionsBody").innerHTML=s.docs.map(d=>{let q=d.data();return `<tr><td>${esc(STAGES[q.stage]?.label||q.stage)}</td><td>${esc(q.grade)}</td><td>${esc(q.subject)}</td><td>${esc(q.question)}</td></tr>`}).join("")||'<tr><td colspan="4">No questions uploaded.</td></tr>'}catch(e){toast(friendly(e))}}
+
 $("createStudentBtn").onclick=async()=>{let secondary=null;try{
  if(profile?.role!=="admin")throw Error("Administrator access required.");
  let name=$("stName").value.trim(),email=$("stEmail").value.trim(),password=$("stPass").value,roll=$("stRoll").value.trim(),stage=$("stStage").value,grade=$("stGrade").value;
@@ -125,6 +267,7 @@ $("createStudentBtn").onclick=async()=>{let secondary=null;try{
  await db.collection("users").doc(cred.user.uid).set({name,email,roll,stage,grade,role:"student",active:true,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:currentUser.uid});
  ["stName","stEmail","stPass","stRoll"].forEach(id=>$(id).value="");toast("Student account created.");await loadAdmin()
  }catch(e){toast(friendly(e))}finally{if(secondary)await secondary.delete().catch(()=>{})}};
+
 const aliases={stage:["stage","level"],grade:["grade","class"],subject:["subject","domain","domainorsubject","learningarea"],question:["question","questiontext","stem"],a:["optiona","opta","option1","choicea","a"],b:["optionb","optb","option2","choiceb","b"],c:["optionc","optc","option3","choicec","c"],d:["optiond","optd","option4","choiced","d"],answer:["correctanswer","answer","correctoption","ans","key"],explanation:["explanation","rationale","reason"],difficulty:["difficulty","complexity"]};
 const norm=s=>String(s??"").toLowerCase().replace(/[^a-z0-9]/g,"");
 function getcol(row,key){for(let a of aliases[key]){let k=Object.keys(row).find(x=>norm(x)===a);if(k&&String(row[k]).trim())return String(row[k]).trim()}return ""}
@@ -141,6 +284,7 @@ $("importBtn").onclick=async()=>{let f=$("excelFile").files[0];if(!f){toast("Cho
  }}
  if(count%400!==0)await batch.commit();$("importReport").textContent=`Imported ${count} questions. Skipped ${errors} invalid rows.`;toast(`Imported ${count} questions.`);await loadQuestions();await loadAdmin()
  }catch(e){$("importReport").textContent=friendly(e);toast(friendly(e))}};
+
 async function loadStudentHome(){try{let p=profile,rs=await db.collection("results").where("studentId","==",currentUser.uid).get(),pts=rs.docs.reduce((a,d)=>a+(Number(d.data().pointsAwarded)||0),0);
  $("studentStats").innerHTML=[["Total points",pts],["Quizzes attempted",rs.size],["Achievement",achievement(pts)]].map(x=>`<div class="stat"><strong>${x[1]}</strong><span>${x[0]}</span></div>`).join("");
  $("studentIntro").textContent=`${STAGES[p.stage]?.label||p.stage} · ${p.grade} · Keep learning and collecting points!`;
@@ -155,10 +299,13 @@ function renderStudentQuestion(){let q=activeQuiz.items[activeQuiz.idx],sel=acti
  document.querySelectorAll(".qoption").forEach(b=>b.onclick=()=>{activeQuiz.answers[activeQuiz.idx]=+b.dataset.i;renderStudentQuestion()});$("qPrev").onclick=()=>{activeQuiz.idx--;renderStudentQuestion()};$("qNext").onclick=()=>{if(activeQuiz.idx===activeQuiz.items.length-1)submitStudentQuiz();else{activeQuiz.idx++;renderStudentQuestion()}}}
 async function submitStudentQuiz(){try{let total=activeQuiz.items.length,correct=activeQuiz.items.reduce((a,q,i)=>a+(q.correctIndex===activeQuiz.answers[i]?1:0),0),percentage=Math.round(correct/total*100),points=correct*10+5+(percentage>=80?10:0)+(correct===total?20:0);
  let result={studentId:currentUser.uid,studentName:profile.name||currentUser.email,stage:profile.stage,grade:profile.grade,subject:activeQuiz.subject,questionIds:activeQuiz.items.map(q=>q.id),answers:activeQuiz.answers,correct,total,percentage,pointsAwarded:points,elapsedSeconds:Math.round((Date.now()-activeQuiz.started)/1000),createdAt:firebase.firestore.FieldValue.serverTimestamp()};
- await db.collection("results").add(result);activeQuiz=null;await loadStudentHome();$("quizArea").innerHTML=`<h2>Quiz completed!</h2><div class="grid" style="margin:14px 0"><div class="stat"><strong>${correct}/${total}</strong><span>Correct answers</span></div><div class="stat"><strong>${percentage}%</strong><span>Accuracy</span></div><div class="stat"><strong>+${points}</strong><span>Points gained</span></div></div><p><span class="badge gold">${achievement((await db.collection("results").where("studentId","==",currentUser.uid).get()).docs.reduce((a,d)=>a+(d.data().pointsAwarded||0),0))}</span></p><button class="btn" id="backHome">Back to dashboard</button>`;$("backHome").onclick=()=>{loadStudentHome();showStudentTab("v-home")};toast("Quiz result saved.")}catch(e){toast(friendly(e))}}
-async function loadMyResults(){let s=await db.collection("results").where("studentId","==",currentUser.uid).limit(30).get();let docs=s.docs.sort((a,b)=>(b.data().createdAt?.toMillis?.()||0)-(a.data().createdAt?.toMillis?.()||0));$("myResults").innerHTML=docs.map(d=>{let r=d.data();return `<tr><td>${r.createdAt?.toDate?.().toLocaleDateString?.()||"Just now"}</td><td>${esc(r.subject)}</td><td>${r.correct}/${r.total} (${r.percentage}%)</td><td><b>+${r.pointsAwarded}</b></td></tr>`}).join("")||'<tr><td colspan="4">No quiz attempts yet.</td></tr>'}
+ await db.collection("results").add(result);activeQuiz=null;await loadStudentHome();
+ const allPts=(await db.collection("results").where("studentId","==",currentUser.uid).get()).docs.reduce((a,d)=>a+(Number(d.data().pointsAwarded)||0),0);
+ $("quizArea").innerHTML=`<h2>Quiz completed!</h2><div class="grid" style="margin:14px 0"><div class="stat"><strong>${correct}/${total}</strong><span>Correct answers</span></div><div class="stat"><strong>${percentage}%</strong><span>Accuracy</span></div><div class="stat"><strong>+${points}</strong><span>Points gained</span></div></div><p><span class="badge gold">${achievement(allPts)}</span></p><button class="btn" id="backHome">Back to dashboard</button>`;$("backHome").onclick=()=>{loadStudentHome();showStudentTab("v-home")};toast("Quiz result saved.")}catch(e){toast(friendly(e))}}
+async function loadMyResults(){try{let s=await db.collection("results").where("studentId","==",currentUser.uid).limit(30).get();let docs=s.docs.sort((a,b)=>(b.data().createdAt?.toMillis?.()||0)-(a.data().createdAt?.toMillis?.()||0));$("myResults").innerHTML=docs.map(d=>{let r=d.data();let when=r.createdAt?.toDate?.().toLocaleDateString?.()||"Just now";return `<tr><td>${esc(when)}</td><td>${esc(r.subject)}</td><td>${r.correct}/${r.total} (${r.percentage}%)</td><td><b>+${r.pointsAwarded}</b></td></tr>`}).join("")||'<tr><td colspan="4">No quiz attempts yet.</td></tr>'}catch(e){toast(friendly(e))}}
 async function loadLeaderboard(){try{let s=await db.collection("users").where("role","==","student").where("stage","==",profile.stage).where("grade","==",profile.grade).get();let arr=await Promise.all(s.docs.map(async d=>({id:d.id,...d.data(),points:await pointsFor(d.id)})));arr.sort((a,b)=>b.points-a.points);$("leaderboardBody").innerHTML=arr.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td><b>${x.points}</b></td><td>${achievement(x.points)}</td></tr>`).join("")||'<tr><td colspan="4">No students in this grade yet.</td></tr>'}catch(e){toast(friendly(e))}}
-async function loadReports(){try{let s=await db.collection("results").orderBy("createdAt","desc").limit(300).get();$("reportsBody").innerHTML=s.docs.map(d=>{let r=d.data();return `<tr><td>${esc(r.studentName)}</td><td>${esc(STAGES[r.stage]?.label)} · ${esc(r.grade)}</td><td>${esc(r.subject)}</td><td>${r.correct}/${r.total} (${r.percentage}%)</td><td><b>${r.pointsAwarded}</b></td><td>${r.createdAt?.toDate?.().toLocaleString?.()||""}</td></tr>`}).join("")||'<tr><td colspan="6">No results yet.</td></tr>'}catch(e){toast(friendly(e))}}
+async function loadReports(){try{let s=await db.collection("results").orderBy("createdAt","desc").limit(300).get();$("reportsBody").innerHTML=s.docs.map(d=>{let r=d.data();return `<tr><td>${esc(r.studentName)}</td><td>${esc(STAGES[r.stage]?.label||r.stage)} · ${esc(r.grade)}</td><td>${esc(r.subject)}</td><td>${r.correct}/${r.total} (${r.percentage}%)</td><td><b>${r.pointsAwarded}</b></td><td>${esc(r.createdAt?.toDate?.().toLocaleString?.()||"")}</td></tr>`}).join("")||'<tr><td colspan="6">No results yet.</td></tr>'}catch(e){toast(friendly(e))}}
+
 try{init()}catch(e){$("loginError").textContent=e.message}
 </script>
 </body></html>
